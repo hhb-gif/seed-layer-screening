@@ -26,11 +26,7 @@ seed-layer-screening/
 ├── .gitignore
 ├── src/                                ← 代码
 │   ├── seed_layer_pipeline.py          ← 原版主程序
-│   ├── seed_layer_pipeline_improved.py ← 改进版主程序
-│   └── debug/
-│       ├── debug_lattice.py            ← 晶格匹配调试
-│       ├── debug_lattice2.py
-│       └── debug_neb.py                ← NEB 计算调试
+│   └── seed_layer_pipeline_improved.py ← 改进版主程序
 └── data/                               ← 示例材料列表
     ├── test_materials.txt
     └── sample_materials.txt
