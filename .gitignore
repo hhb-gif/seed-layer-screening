@@ -1,0 +1,25 @@
+# 运行产出结果
+output_*/
+demo_output*/
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# Hermes
+.hermes/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 环境
+.env
+*.log
