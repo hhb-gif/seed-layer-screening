@@ -5,8 +5,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-import pandas as pd
-
 from .config import PipelineConfig
 from .calculators import create_calculator, CalculatorBase
 from .io import (
@@ -155,16 +153,84 @@ class SeedLayerPipeline:
             materials_file: Path to materials list file
 
         Returns:
-            List of material dictionaries
+            List of material dictionaries, each with at least 'material_id'
         """
-        # TODO: Implement materials fetching
-        # For now, return placeholder
-        return []
+        if materials_file:
+            return self._read_materials_file(materials_file)
+        return self._fetch_from_mp_api()
+
+    def _read_materials_file(self, materials_file: str) -> List[dict]:
+        """Read material IDs from a text file.
+
+        Supports one material_id per line. Lines starting with '#' or
+        blank lines are skipped.
+
+        Args:
+            materials_file: Path to materials list file
+
+        Returns:
+            List of material dicts with 'material_id' key
+        """
+        path = Path(materials_file)
+        if not path.exists():
+            raise FileNotFoundError(f"Materials file not found: {materials_file}")
+
+        materials = []
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    materials.append({"material_id": stripped})
+
+        logger.info(f"Read {len(materials)} materials from {materials_file}")
+        return materials
+
+    def _fetch_from_mp_api(self) -> List[dict]:
+        """Fetch candidate materials from Materials Project API.
+
+        Uses screening config to query MP for candidate materials.
+
+        Returns:
+            List of material dicts with 'material_id' and 'formula' keys
+        """
+        from mp_api.client import MPRester
+
+        api_key = self.config.api.get("mp_api_key", "")
+        screening = self.config.screening
+
+        energy_above_hull_max = screening.get("energy_above_hull_max", 0.10)
+        n_elements = screening.get("n_elements", [2, 3])
+        exclude = set(screening.get("elements_to_exclude", []))
+
+        logger.info(
+            f"Querying MP API: energy_above_hull <= {energy_above_hull_max}, "
+            f"n_elements in {n_elements}, excluding {exclude}"
+        )
+
+        materials = []
+        with MPRester(api_key) as mpr:
+            docs = mpr.materials.summary.search(
+                energy_above_hull=(0, energy_above_hull_max),
+                num_elements=tuple(n_elements),
+                fields=["material_id", "formula_pretty", "elements"],
+            )
+
+            for doc in docs:
+                elements = {el.symbol for el in doc.elements}
+                if elements & exclude:
+                    continue
+                materials.append({
+                    "material_id": doc.material_id,
+                    "formula": doc.formula_pretty,
+                })
+
+        logger.info(f"Fetched {len(materials)} candidate materials from MP API")
+        return materials
 
     def _generate_summary(
         self,
         stable: List[str],
-        matched: List[str],
+        matched: List[dict],
         adsorption: dict,
         diffusion: dict,
     ):
@@ -172,9 +238,17 @@ class SeedLayerPipeline:
 
         Args:
             stable: List of stable material IDs
-            matched: List of matched material IDs
+            matched: List of matched material dicts (from LatticeStep)
             adsorption: Adsorption results by material ID
             diffusion: Diffusion results by material ID
         """
-        # TODO: Implement summary generation
-        pass
+        from .reporting import generate_summary_csv
+
+        df = generate_summary_csv(
+            output_dir=self.run_dir,
+            stable_ids=stable,
+            matched_materials=matched,
+            adsorption_results=adsorption,
+            diffusion_results=diffusion,
+        )
+        logger.info(f"Summary: {len(df)} materials in final report")
