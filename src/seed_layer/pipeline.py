@@ -244,11 +244,14 @@ class SeedLayerPipeline:
         """
         from .reporting import generate_summary_csv
 
+        max_mismatch = self.config.get('lattice', 'max_mismatch', 8.0)
+
         df = generate_summary_csv(
             output_dir=self.run_dir,
             stable_ids=stable,
             matched_materials=matched,
             adsorption_results=adsorption,
             diffusion_results=diffusion,
+            max_mismatch=max_mismatch,
         )
         logger.info(f"Summary: {len(df)} materials in final report")
