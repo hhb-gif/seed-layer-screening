@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "seed-layer-screening"
+version = "0.1.0"
+description = "High-throughput screening of seed layer materials for lithium metal batteries"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "pymatgen>=2024.0",
+    "mp-api>=0.40.0",
+    "chgnet>=0.3.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
