@@ -23,90 +23,112 @@ Step 5  CI-NEB 扩散   → 2×2 超胞，7 image，BFGS 优化扩散势垒
 ```
 seed-layer-screening/
 ├── README.md
-├── .gitignore
-├── src/                                ← 代码
-│   ├── seed_layer_pipeline.py          ← 原版主程序
-│   └── seed_layer_pipeline_improved.py ← 改进版主程序
-└── data/                               ← 示例材料列表
-    ├── test_materials.txt
-    └── sample_materials.txt
+├── pyproject.toml              ← 项目元数据 & 依赖
+├── configs/
+│   └── default.yaml            ← 默认运行配置
+├── src/
+│   ├── main.py                 ← CLI 入口
+│   └── seed_layer/             ← 核心包
+│       ├── config.py           ← 配置加载
+│       ├── pipeline.py         ← 流水线编排
+│       ├── io.py               ← I/O 工具
+│       ├── reporting.py        ← 报告生成
+│       ├── calculators/        ← 势函数抽象层
+│       │   ├── base.py         ← Calculator 基类
+│       │   └── chgnet.py       ← CHGNet 实现
+│       └── steps/              ← 筛选步骤
+│           ├── base.py         ← Step 基类
+│           ├── stability.py    ← Step 2: 电化学稳定性
+│           ├── lattice.py      ← Step 3: 晶格匹配
+│           ├── adsorption.py   ← Step 4: 吸附能
+│           └── diffusion.py    ← Step 5: NEB 扩散
+├── data/                       ← 示例材料列表
+│   ├── test_materials.txt
+│   └── sample_materials.txt
+├── tests/                      ← 单元测试
+└── output/                     ← 运行产出（不纳入版本控制）
 ```
 
-运行产出（不纳入版本控制）按以下结构组织：
-
-```
-output_x/                   ← 每次运行一个文件夹
-├── 原材料池/
-│   ├── run_config.json     ← 运行参数记录
-│   └── step1_materials_pool.csv
-├── 计算结果/
-│   ├── step2_stability.csv
-│   ├── step3_lattice_match.csv
-│   ├── step4_adsorption.csv
-│   └── step5_diffusion.csv
-└── 评分/
-    ├── final_ranking.csv
-    └── final_report.txt
-```
-
-## 运行方法
+## 快速开始
 
 ### 环境要求
 
-- Python 3.12+
+- Python 3.10+
 - conda 环境 `materials_searching`（含 pymatgen, chgnet, mp-api, ASE, pandas）
 - Materials Project API Key
 
-### 全量运行
+### 安装
 
 ```bash
-cd seed-layer-screening/src
-MP_API_KEY=<your_key> python seed_layer_pipeline_improved.py --output output_1
+cd seed-layer-screening
+pip install -e ".[dev]"
 ```
 
-### 指定材料列表
+### 运行
+
+使用默认配置：
 
 ```bash
-python seed_layer_pipeline_improved.py --materials ../data/test_materials.txt --output output_1
+# 设置 API Key
+export MP_API_KEY=<your_key>
+
+# 运行
+python src/main.py --config configs/default.yaml
 ```
 
-### 断点续跑
+指定标签（输出目录命名为 `output/<tag>/`）：
 
 ```bash
-python seed_layer_pipeline_improved.py --output output_1 --resume
+python src/main.py --config configs/default.yaml --tag trial1
 ```
 
-### 离线逻辑验证（Demo 模式）
+指定材料列表：
 
 ```bash
-python seed_layer_pipeline_improved.py --demo --output demo_output
+python src/main.py --config configs/default.yaml --materials data/test_materials.txt
+```
+
+跳过 NEB 扩散计算：
+
+```bash
+python src/main.py --config configs/default.yaml --skip-neb
 ```
 
 ### CLI 参数
 
 | 参数 | 说明 |
 |------|------|
-| `--output` | 输出目录名（默认 `output`） |
-| `--resume` | 断点续跑，跳过已有 CSV 的步骤 |
-| `--materials` | 自定义材料列表（每行一个 mp-id） |
+| `--config` | YAML 配置文件路径（默认 `configs/default.yaml`） |
+| `--tag` | 输出目录标签 |
+| `--materials` | 自定义材料列表文件（每行一个 mp-id） |
 | `--skip-neb` | 跳过 Step 5 NEB 计算 |
-| `--skip-lattice` | 跳过 Step 3，稳定性通过后直接算吸附 |
-| `--demo` | 离线模式，不依赖 MP API 和 CHGNet |
-| `--api-key` | MP API Key（或通过环境变量 `MP_API_KEY` 设置） |
+| `--resume` | 断点续跑（预留） |
+| `--demo` | 离线演示模式（预留） |
 
-## 原版 vs 改进版
+### 配置文件
 
-| 对比项 | 原版 | 改进版 |
-|--------|------|--------|
-| 评分归一化 | 缺失项混入分母 | 按已有项归一化 |
-| 排序逻辑 | 不一致 | NEB 加入后重新排序 |
-| Miller 指数解析 | `eval()` | `ast.literal_eval()`（更安全） |
-| 离线验证 | 不支持 | `--demo` 模式 |
-| 输出结构 | 平铺 | 分类子目录 + run_config |
+所有运行参数通过 YAML 配置文件控制，包括 API 设置、筛选阈值、计算参数、打分权重等。详见 [参数说明文档（中文）](docs/parameters_cn.md)。
+
+示例配置见 `configs/default.yaml`。
+
+## 架构设计
+
+项目采用模块化架构，核心设计原则：
+
+- **Step 抽象**：每个筛选步骤继承 `StepBase`，实现 `run()` 和 `skip()` 接口，支持独立测试和灵活组合
+- **Calculator 抽象**：势函数通过 `CalculatorBase` 解耦，可轻松替换为 MACE、M3GNet 等其他 ML 势
+- **YAML 配置驱动**：所有参数集中在配置文件中，便于复现和对比实验
+- **Pipeline 编排**：`SeedLayerPipeline` 按顺序执行各 Step，处理数据传递和断点逻辑
+
+## 测试
+
+```bash
+pytest tests/ -v
+```
 
 ## 当前结果
 
-10 个候选材料 → 3 个通过稳定性筛选：
+10 个候选材料 -> 3 个通过稳定性筛选：
 
 | 排名 | 材料 | 综合得分 | 吸附能 | 晶格失配 | 扩散势垒 |
 |------|------|---------|--------|---------|---------|
@@ -116,5 +138,5 @@ python seed_layer_pipeline_improved.py --demo --output demo_output
 
 ## 参考文献
 
-- CHGNet: Deng, B. et al. *CHGNet as a universal neural network potential for charge-informed atomistic modelling.* Nat. Mach. Intell. 5, 1031–1041 (2023).
+- CHGNet: Deng, B. et al. *CHGNet as a universal neural network potential for charge-informed atomistic modelling.* Nat. Mach. Intell. 5, 1031-1041 (2023).
 - Materials Project: Jain, A. et al. *Commentary: The Materials Project: A materials genome approach to accelerating materials innovation.* APL Mater. 1, 011002 (2013).
