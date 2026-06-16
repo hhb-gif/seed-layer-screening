@@ -1,0 +1,11 @@
+# configs/docker.yaml
+# Docker 环境配置 - 覆盖默认值
+
+# 继承默认配置，只覆盖需要改的
+api:
+  mp_api_key: "${MP_API_KEY}"
+
+output:
+  save_structures: true
+  save_trajectories: false
+  save_neb_trajectories: true

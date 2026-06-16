@@ -1,25 +1,25 @@
-# 运行产出结果
-output_*/
-demo_output*/
-output/
-
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.egg-info/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Output (runtime generated)
+output/
 
 # IDE
-.vscode/
 .idea/
-
-# Hermes
-.hermes/
+.vscode/
+*.swp
+*.swo
 
 # OS
 .DS_Store
 Thumbs.db
 
-# 环境
-.env
+# Logs
 *.log

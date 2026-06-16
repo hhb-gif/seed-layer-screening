@@ -1,0 +1,7 @@
+# configs/hpc.yaml
+# 超算平台配置 - 覆盖默认值
+
+# 可以调大并行数、改路径等
+calculator:
+  type: "chgnet"
+  kwargs: {}

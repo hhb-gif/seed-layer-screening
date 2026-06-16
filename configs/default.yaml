@@ -1,0 +1,114 @@
+# configs/default.yaml
+# 锂金属电池种子层材料筛选 - 默认配置
+# 所有能量单位 eV，长度单位 Å
+
+# ── API ──
+api:
+  mp_api_key: "${MP_API_KEY}"
+
+# ── 材料池初筛 ──
+screening:
+  energy_above_hull_max: 0.10
+  n_elements: [2, 3]
+  elements_to_exclude:
+    - Pt
+    - Pd
+    - Rh
+    - Ir
+    - Ru
+    - Os
+    - Re
+    - Tc
+    - Hg
+    - Pb
+    - Cd
+    - As
+    - Tl
+    - Be
+    - U
+    - Th
+    - Pu
+    - Np
+    - Am
+    - Cm
+    - Ra
+    - Po
+    - In
+    - Ga
+    - Ge
+    - Sb
+    - Bi
+    - La
+    - Ce
+    - Pr
+    - Nd
+    - Pm
+    - Sm
+    - Eu
+    - Gd
+    - Tb
+    - Dy
+    - Ho
+    - Er
+    - Tm
+    - Yb
+    - Lu
+    - Sc
+    - Y
+
+# ── 晶格匹配 ──
+lattice:
+  li_miller: [1, 1, 0]
+  max_mismatch: 8.0
+  angle_tolerance: 180.0
+  max_scale: 8
+
+# ── 表面模型 ──
+surface:
+  vacuum: 15.0
+  slab_thickness: 15.0
+  default_miller: [0, 0, 1]
+  supercell: [2, 2, 1]
+
+# ── 势函数 ──
+calculator:
+  type: "chgnet"
+  kwargs: {}
+
+# ── 弛豫参数 ──
+relaxation:
+  fmax_bulk: 0.05
+  fmax_slab: 0.10
+  fmax_adsorb: 0.05
+  steps_bulk: 500
+  steps_slab: 200
+  steps_adsorb: 250
+
+# ── 吸附能 ──
+adsorption:
+  coverages: [0.25, 0.5, 0.75, 1.0]
+  adsorption_min: -0.8
+  adsorption_max: -0.2
+  adsorbate_height: 1.8
+  li_area_per_atom: 8.0
+
+# ── NEB 扩散 ──
+diffusion:
+  neb_n_images: 7
+  neb_fmax: 0.10
+  neb_steps: 200
+  neb_climb: true
+  li_displacement_min: 0.2
+  neb_top_n: 50
+
+# ── 打分权重 ──
+scoring:
+  w_lattice: 0.3
+  w_adsorption: 0.4
+  w_diffusion: 0.3
+
+# ── 输出控制 ──
+output:
+  save_structures: true
+  save_trajectories: false
+  save_neb_trajectories: true
