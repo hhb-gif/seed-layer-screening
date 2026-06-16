@@ -1,0 +1,180 @@
+"""Main pipeline orchestrator for seed layer screening."""
+
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional
+
+import pandas as pd
+
+from .config import PipelineConfig
+from .calculators import create_calculator, CalculatorBase
+from .io import (
+    save_json,
+    save_structure_cif,
+    save_lattice_params,
+    create_material_dir,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class SeedLayerPipeline:
+    """Main pipeline for seed layer material screening."""
+
+    def __init__(self, config: PipelineConfig, output_dir: Path, tag: Optional[str] = None):
+        """Initialize pipeline.
+
+        Args:
+            config: Pipeline configuration
+            output_dir: Base output directory
+            tag: Optional tag for output directory naming
+        """
+        self.config = config
+        self.output_dir = output_dir
+        self.tag = tag
+
+        # Create timestamped output directory
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dir_name = timestamp if not tag else f"{timestamp}_{tag}"
+        self.run_dir = output_dir / dir_name
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize calculator
+        self.calculator = create_calculator(config.calculator)
+
+        # Setup logging
+        self._setup_logging()
+
+        # Save run config snapshot
+        self._save_run_config()
+
+        logger.info(f"Pipeline initialized. Output: {self.run_dir}")
+
+    def _setup_logging(self):
+        """Setup logging to file and console."""
+        log_dir = self.run_dir / "logs"
+        log_dir.mkdir(exist_ok=True)
+
+        # File handler
+        fh = logging.FileHandler(log_dir / "run.log")
+        fh.setLevel(logging.INFO)
+
+        # Console handler
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)
+
+        # Formatter
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        fh.setFormatter(formatter)
+        ch.setFormatter(formatter)
+
+        logger.addHandler(fh)
+        logger.addHandler(ch)
+        logger.setLevel(logging.INFO)
+
+    def _save_run_config(self):
+        """Save current config to run directory."""
+        import yaml
+
+        config_path = self.run_dir / "run_config.yaml"
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(
+                {
+                    "api": self.config.api,
+                    "screening": self.config.screening,
+                    "lattice": self.config.lattice,
+                    "surface": self.config.surface,
+                    "calculator": self.config.calculator,
+                    "relaxation": self.config.relaxation,
+                    "adsorption": self.config.adsorption,
+                    "diffusion": self.config.diffusion,
+                    "scoring": self.config.scoring,
+                    "output": self.config.output,
+                },
+                f,
+                default_flow_style=False,
+                allow_unicode=True,
+            )
+
+    def run(self, materials_file: Optional[str] = None, skip_neb: bool = False):
+        """Run the full screening pipeline.
+
+        Args:
+            materials_file: Path to materials list file (optional)
+            skip_neb: Whether to skip NEB diffusion calculation
+        """
+        from .steps.stability import StabilityStep
+        from .steps.lattice import LatticeStep
+        from .steps.adsorption import AdsorptionStep
+        from .steps.diffusion import DiffusionStep
+
+        # Step 1: Fetch materials
+        logger.info("Step 1: Fetching materials pool...")
+        materials = self._fetch_materials(materials_file)
+        logger.info(f"Found {len(materials)} candidate materials")
+
+        # Step 2: Stability screening
+        logger.info("Step 2: Electrochemical stability screening...")
+        stability_step = StabilityStep(self.config, self.calculator, self.run_dir)
+        stable_materials = stability_step.run(materials)
+        logger.info(f"{len(stable_materials)} materials passed stability screening")
+
+        # Step 3: Lattice matching
+        logger.info("Step 3: Lattice mismatch calculation...")
+        lattice_step = LatticeStep(self.config, self.calculator, self.run_dir)
+        matched_materials = lattice_step.run(stable_materials)
+        logger.info(f"{len(matched_materials)} materials passed lattice matching")
+
+        # Step 4: Adsorption energy
+        logger.info("Step 4: Adsorption energy calculation...")
+        adsorption_step = AdsorptionStep(self.config, self.calculator, self.run_dir)
+        adsorption_results = adsorption_step.run(matched_materials)
+        logger.info(f"Adsorption calculated for {len(adsorption_results)} materials")
+
+        # Step 5: Diffusion barrier (optional)
+        if not skip_neb:
+            logger.info("Step 5: NEB diffusion barrier calculation...")
+            diffusion_step = DiffusionStep(self.config, self.calculator, self.run_dir)
+            diffusion_results = diffusion_step.run(adsorption_results)
+            logger.info(f"Diffusion calculated for {len(diffusion_results)} materials")
+        else:
+            logger.info("Step 5: Skipping NEB calculation")
+            diffusion_results = {}
+
+        # Generate summary
+        logger.info("Generating summary report...")
+        self._generate_summary(stable_materials, matched_materials, adsorption_results, diffusion_results)
+
+        logger.info("Pipeline complete!")
+
+    def _fetch_materials(self, materials_file: Optional[str] = None) -> List[dict]:
+        """Fetch materials from MP API or file.
+
+        Args:
+            materials_file: Path to materials list file
+
+        Returns:
+            List of material dictionaries
+        """
+        # TODO: Implement materials fetching
+        # For now, return placeholder
+        return []
+
+    def _generate_summary(
+        self,
+        stable: List[str],
+        matched: List[str],
+        adsorption: dict,
+        diffusion: dict,
+    ):
+        """Generate summary CSV.
+
+        Args:
+            stable: List of stable material IDs
+            matched: List of matched material IDs
+            adsorption: Adsorption results by material ID
+            diffusion: Diffusion results by material ID
+        """
+        # TODO: Implement summary generation
+        pass
