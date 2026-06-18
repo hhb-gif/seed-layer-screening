@@ -4,19 +4,32 @@
 
 锂金属负极被认为是下一代高能量密度电池的理想选择，但枝晶生长问题严重制约其实际应用。本项目通过**高通量计算筛选**，寻找适合作为"种子层"的材料——在锂表面沉积一层薄层，引导锂均匀沉积、抑制枝晶生长。
 
-筛选流程基于 Materials Project 数据库，结合 **CHGNet 机器学习势**和 **CI-NEB 扩散计算**，从数千种候选材料中逐步筛选出最优种子层材料。
+筛选流程基于 Materials Project 数据库，结合 **MACE-MPA-0 机器学习势**和 **CI-NEB 扩散计算**，从数千种候选材料中逐步筛选出最优种子层材料。支持 Li、Zn、Mg、Na 等多种工作离子，改一行配置即可切换。
 
 ## 筛选流程
 
 ```
 Step 1  材料池初筛    → 从 MP 数据库拉取，过滤有害元素，保留二/三元化合物
-Step 2  电化学稳定性  → 相图法检查与 Li 接触是否反应
-Step 3  晶格匹配度    → 各低指数面 vs Li(110)，失配 < 8%
-Step 4  CHGNet 吸附能 → 构建 slab，放 Li 原子，弛豫算能量差
+Step 2  电化学稳定性  → 相图法检查与工作离子接触是否反应
+Step 3  晶格匹配度    → 各低指数面 vs 参考金属，失配 < 8%
+Step 3.5 界面能       → 种子层-金属-种子层三明治，逐层外推法
+Step 4  吸附能        → 构建 slab，放工作离子，弛豫算能量差
 Step 5  CI-NEB 扩散   → 2×2 超胞，7 image，BFGS 优化扩散势垒
 ```
 
 每步层层筛选，下一层只计算上一层达标的材料。
+
+## 评分体系
+
+综合评分由 5 个指标加权计算：
+
+| 指标 | 权重 | 公式 |
+|------|------|------|
+| S_adsorption | 25% | exp(-((E_ads + 0.5)²) / 0.08) |
+| S_diffusion | 25% | max(0, 1.0 - barrier / 1.0) |
+| S_interface | 25% | exp(-γ / 0.05) |
+| S_lattice | 15% | max(0, 1.0 - mismatch / max_mismatch) |
+| S_stability | 10% | exp(-e_above_hull / 0.05) |
 
 ## 目录结构
 
@@ -29,17 +42,18 @@ seed-layer-screening/
 ├── src/
 │   ├── main.py                 ← CLI 入口
 │   └── seed_layer/             ← 核心包
-│       ├── config.py           ← 配置加载
+│       ├── config.py           ← 配置加载（支持 ${ENV_VAR}）
 │       ├── pipeline.py         ← 流水线编排
 │       ├── io.py               ← I/O 工具
-│       ├── reporting.py        ← 报告生成
+│       ├── reporting.py        ← 报告生成 + 评分
 │       ├── calculators/        ← 势函数抽象层
 │       │   ├── base.py         ← Calculator 基类
-│       │   └── chgnet.py       ← CHGNet 实现
+│       │   └── mace.py         ← MACE-MPA-0 实现
 │       └── steps/              ← 筛选步骤
-│           ├── base.py         ← Step 基类
+│           ├── base.py         ← Step 基类（含 build_ref_structure）
 │           ├── stability.py    ← Step 2: 电化学稳定性
 │           ├── lattice.py      ← Step 3: 晶格匹配
+│           ├── interface.py    ← Step 3.5: 界面能
 │           ├── adsorption.py   ← Step 4: 吸附能
 │           └── diffusion.py    ← Step 5: NEB 扩散
 ├── data/                       ← 示例材料列表
@@ -54,7 +68,7 @@ seed-layer-screening/
 ### 环境要求
 
 - Python 3.10+
-- conda 环境 `materials_searching`（含 pymatgen, chgnet, mp-api, ASE, pandas）
+- conda 环境 `claude-code`（含 pymatgen, mace-torch, mp-api, ASE, pandas）
 - Materials Project API Key
 
 ### 安装
@@ -74,6 +88,17 @@ export MP_API_KEY=<your_key>
 
 # 运行
 python src/main.py --config configs/default.yaml
+```
+
+指定工作离子（如锌）：
+
+```yaml
+# configs/zinc.yaml
+working_ion: Zn
+```
+
+```bash
+python src/main.py --config configs/zinc.yaml
 ```
 
 指定标签（输出目录命名为 `output/<tag>/`）：
@@ -115,10 +140,11 @@ python src/main.py --config configs/default.yaml --skip-neb
 
 项目采用模块化架构，核心设计原则：
 
-- **Step 抽象**：每个筛选步骤继承 `StepBase`，实现 `run()` 和 `skip()` 接口，支持独立测试和灵活组合
-- **Calculator 抽象**：势函数通过 `CalculatorBase` 解耦，可轻松替换为 MACE、M3GNet 等其他 ML 势
-- **YAML 配置驱动**：所有参数集中在配置文件中，便于复现和对比实验
+- **Step 抽象**：每个筛选步骤继承 `BaseStep`，实现 `run()` 接口，支持独立测试和灵活组合
+- **Calculator 抽象**：势函数通过 `CalculatorBase` 解耦，可轻松替换为 MACE、CHGNet 等其他 ML 势
+- **YAML 配置驱动**：所有参数集中在配置文件中，支持 `${ENV_VAR}` 环境变量替换
 - **Pipeline 编排**：`SeedLayerPipeline` 按顺序执行各 Step，处理数据传递和断点逻辑
+- **多工作离子支持**：改 `working_ion` 配置即可切换 Li/Zn/Mg/Na 等，参考金属自动从 MP 拉取
 
 ## 测试
 
@@ -126,17 +152,8 @@ python src/main.py --config configs/default.yaml --skip-neb
 pytest tests/ -v
 ```
 
-## 当前结果
-
-10 个候选材料 -> 3 个通过稳定性筛选：
-
-| 排名 | 材料 | 综合得分 | 吸附能 | 晶格失配 | 扩散势垒 |
-|------|------|---------|--------|---------|---------|
-| 1 | LiAl2Ni | 0.892 | -0.608 eV | 1.4% | 0.000 eV |
-| 2 | LiZn2Ni | 0.804 | -0.657 eV | 1.5% | 0.116 eV |
-| 3 | Li2AlAg | 0.613 | -0.597 eV | 1.1% | 1.101 eV |
-
 ## 参考文献
 
-- CHGNet: Deng, B. et al. *CHGNet as a universal neural network potential for charge-informed atomistic modelling.* Nat. Mach. Intell. 5, 1031-1041 (2023).
+- MACE: Batatia, I. et al. *MACE: Higher Order Equivariant Message Passing Neural Networks for Fast and Accurate Force Fields.* NeurIPS (2022).
+- MACE-MPA-0: Batatia, I. et al. *A foundation model for atomistic simulation.* arXiv:2401.00096 (2024).
 - Materials Project: Jain, A. et al. *Commentary: The Materials Project: A materials genome approach to accelerating materials innovation.* APL Mater. 1, 011002 (2013).
