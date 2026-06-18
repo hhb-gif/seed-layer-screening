@@ -1,10 +1,15 @@
 # configs/default.yaml
-# 锂金属电池种子层材料筛选 - 默认配置
+# 金属电池种子层材料筛选 - 默认配置
 # 所有能量单位 eV，长度单位 Å
 
 # ── API ──
 api:
   mp_api_key: "${MP_API_KEY}"
+
+# ── 工作离子 ──
+working_ion: Li                      # 元素符号: Li, Zn, Mg, Na, K, Ca ...
+# ref_structure_id: mp-135           # 可选: 手动指定参考金属 MP ID (不填则自动查找最稳定结构)
+ref_miller: [1, 1, 0]               # 参考金属表面 Miller 指数
 
 # ── 材料池初筛 ──
 screening:
@@ -58,7 +63,6 @@ screening:
 
 # ── 晶格匹配 ──
 lattice:
-  li_miller: [1, 1, 0]
   max_mismatch: 8.0
   angle_tolerance: 180.0
   max_scale: 8
@@ -71,9 +75,14 @@ surface:
   supercell: [2, 2, 1]
 
 # ── 势函数 ──
+# 可选: "mace" (推荐, MACE-MPA-0), "chgnet"
 calculator:
-  type: "chgnet"
-  kwargs: {}
+  type: "mace"
+  kwargs:
+    model: "medium-mpa-0"     # MACE-MPA-0 medium (F1=0.836)
+    device: "cpu"             # "cuda" 或 "cpu"
+    default_dtype: "float64"  # "float64" 更准, "float32" 更快
+    dispersion: false         # D3 色散校正
 
 # ── 弛豫参数 ──
 relaxation:
@@ -84,13 +93,21 @@ relaxation:
   steps_slab: 200
   steps_adsorb: 250
 
+# ── 界面能 ──
+interface:
+  max_metal_layers: 5          # 逐层计算的最大金属层数
+  slab_thickness: 5            # slab 厚度 Å
+  vacuum: 15.0                 # 真空层厚度 Å
+  fmax: 0.05                   # 驰豫力收敛 eV/Å
+  steps: 500                   # 最大弛豫步数
+
 # ── 吸附能 ──
 adsorption:
   coverages: [0.25, 0.5, 0.75, 1.0]
   adsorption_min: -0.8
   adsorption_max: -0.2
   adsorbate_height: 1.8
-  li_area_per_atom: 8.0
+  ion_area_per_atom: 8.0            # 离子面积: Li≈8, Zn≈10 Å²
 
 # ── NEB 扩散 ──
 diffusion:
@@ -98,14 +115,16 @@ diffusion:
   neb_fmax: 0.10
   neb_steps: 200
   neb_climb: true
-  li_displacement_min: 0.2
+  ion_displacement_min: 0.2
   neb_top_n: 50
 
-# ── 打分权重 ──
+# ── 评分 ──
 scoring:
-  w_lattice: 0.3
-  w_adsorption: 0.4
-  w_diffusion: 0.3
+  w_lattice: 0.15       # 原 0.25
+  w_adsorption: 0.25    # 不变
+  w_diffusion: 0.25     # 不变
+  w_stability: 0.10     # 原 0.25
+  w_interface: 0.25     # 新增
 
 # ── 输出控制 ──
 output:
