@@ -7,13 +7,15 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from .base import BaseStep
-from ..io import save_structure_cif, save_json, create_material_dir
+from ..io import save_structure_cif, save_json, create_material_dir, ensure_structure
 
 logger = logging.getLogger(__name__)
 
 
 class DiffusionStep(BaseStep):
-    """Calculate Li diffusion barriers using CI-NEB."""
+    """Calculate working ion diffusion barriers using CI-NEB."""
+
+    step_dir_name = "04_diffusion"
 
     def run(self, adsorption_results: Dict[str, Any]) -> Dict[str, Any]:
         """Run diffusion barrier calculation.
@@ -42,13 +44,15 @@ class DiffusionStep(BaseStep):
 
             try:
                 diffusion_result = self._calc_diffusion_for_material(
-                    material_id, item['miller']
+                    material_id, item['miller'],
+                    slab_structure=item.get('slab_structure'),
                 )
                 results[material_id] = diffusion_result
 
                 # Save intermediate results
                 material_dir = create_material_dir(self.output_dir, material_id)
-                save_json(diffusion_result, material_dir / "diffusion.json")
+                step_dir = self.get_material_step_dir(material_dir)
+                save_json(diffusion_result, step_dir / "diffusion.json")
 
             except Exception as e:
                 logger.error(f"Failed diffusion for {material_id}: {e}")
@@ -92,7 +96,8 @@ class DiffusionStep(BaseStep):
                 sorted_list.append({
                     'material_id': material_id,
                     'miller': data.get('miller', (1, 0, 0)),
-                    'best_adsorption_energy': best_energy
+                    'best_adsorption_energy': best_energy,
+                    'slab_structure': data.get('clean_slab_struct'),
                 })
 
         # Sort by adsorption energy (most negative first)
@@ -100,13 +105,14 @@ class DiffusionStep(BaseStep):
         return sorted_list
 
     def _calc_diffusion_for_material(
-        self, material_id: str, miller: tuple
+        self, material_id: str, miller: tuple, slab_structure=None
     ) -> Dict[str, Any]:
         """Calculate diffusion barriers for a material.
 
         Args:
             material_id: Materials Project ID
             miller: Miller indices
+            slab_structure: Pre-computed slab Structure from adsorption step
 
         Returns:
             Dict with diffusion barrier results
@@ -136,33 +142,41 @@ class DiffusionStep(BaseStep):
         neb_fmax = self.config.get('diffusion', 'neb_fmax', 0.05)
         neb_steps = self.config.get('diffusion', 'neb_steps', 200)
         neb_climb = self.config.get('diffusion', 'neb_climb', True)
-        li_displacement_min = self.config.get('diffusion', 'li_displacement_min', 0.5)
+        ion_displacement_min = self.config.get('diffusion', 'ion_displacement_min', 0.5)
+        working_ion = self.config.working_ion
 
-        # Get structure from MP API
-        from mp_api.client import MPRester
-        api_key = self.config.get('api', 'api_key', '')
+        # Get or compute slab structure
+        if slab_structure is not None:
+            logger.info("Using pre-computed slab from adsorption step")
+            slab = slab_structure.copy()
+            slab.make_supercell([2, 2, 1])  # Smaller supercell for NEB
+        else:
+            logger.info("Fallback: fetching and computing slab for NEB...")
+            from mp_api.client import MPRester
+            import gc
+            api_key = self.config.get('api', 'mp_api_key', '')
 
-        with MPRester(api_key) as mpr:
-            structure = mpr.get_structure_by_material_id(material_id)
+            with MPRester(api_key) as mpr:
+                structure = ensure_structure(mpr.get_structure_by_material_id(material_id))
 
-        # Relax bulk
-        logger.info("Relaxing bulk structure...")
-        result_bulk = self.calculator.relax(
-            structure, fmax=fmax_bulk, steps=steps_bulk, relax_cell=True
-        )
-        bulk = result_bulk["final_structure"]
+            # Relax bulk
+            logger.info("Relaxing bulk structure...")
+            result_bulk = self.calculator.relax(
+                structure, fmax=fmax_bulk, steps=steps_bulk, relax_cell=True
+            )
+            bulk = result_bulk["final_structure"]
 
-        # Generate slab (smaller for NEB)
-        logger.info("Generating slab for NEB...")
-        slabgen = SlabGenerator(
-            bulk, miller, slab_thickness, vacuum,
-            center_slab=True, primitive=True
-        )
-        slabs = slabgen.get_slabs()
-        if not slabs:
-            raise ValueError(f"No slabs generated for {miller}")
-        slab = slabs[0]
-        slab.make_supercell([2, 2, 1])  # Smaller supercell for NEB
+            # Generate slab
+            logger.info("Generating slab for NEB...")
+            slabgen = SlabGenerator(
+                bulk, miller, slab_thickness, vacuum,
+                center_slab=True, primitive=True
+            )
+            slabs = slabgen.get_slabs()
+            if not slabs:
+                raise ValueError(f"No slabs generated for {miller}")
+            slab = slabs[0].copy()
+            slab.make_supercell([2, 2, 1])  # Smaller supercell for NEB
 
         adaptor = AseAtomsAdaptor()
         ase_slab = adaptor.get_atoms(slab)
@@ -201,10 +215,10 @@ class DiffusionStep(BaseStep):
         bridge_sites = ads_sites.get('bridge', [])
         hollow_sites = ads_sites.get('hollow', [])
 
-        # Relax Li at each site type
-        def relax_li_at_site(site):
+        # Relax working ion at each site type
+        def relax_ion_at_site(site):
             atoms = adaptor.get_atoms(clean_slab)
-            atoms.append('Li')
+            atoms.append(working_ion)
             atoms.positions[-1] = site
             atoms.set_constraint(FixAtoms(indices=list(range(len(atoms) - 1))))
 
@@ -220,7 +234,7 @@ class DiffusionStep(BaseStep):
             logger.info(f"  Processing {stype} sites ({len(sites)} found)")
             if sites:
                 try:
-                    opt[stype] = relax_li_at_site(sites[0])
+                    opt[stype] = relax_ion_at_site(sites[0])
                 except Exception as e:
                     logger.warning(f"  Failed to relax {stype} site: {e}")
                     opt[stype] = None
@@ -244,6 +258,7 @@ class DiffusionStep(BaseStep):
 
         # Run NEB for each path
         material_dir = create_material_dir(self.output_dir, material_id)
+        step_dir = self.get_material_step_dir(material_dir)
         results = []
 
         for path_name, init_atoms, final_atoms in paths:
@@ -252,19 +267,19 @@ class DiffusionStep(BaseStep):
             # Unify cells
             final_atoms.set_cell(init_atoms.get_cell(), scale_atoms=True)
 
-            # Check Li displacement
-            li_init = init_atoms[-1].position
-            li_final = final_atoms[-1].position
-            li_dist = np.linalg.norm(li_init - li_final)
-            logger.info(f"    Li displacement: {li_dist:.3f} Å")
+            # Check ion displacement
+            ion_init = init_atoms[-1].position
+            ion_final = final_atoms[-1].position
+            ion_dist = np.linalg.norm(ion_init - ion_final)
+            logger.info(f"    Ion displacement: {ion_dist:.3f} Å")
 
-            if li_dist < li_displacement_min:
-                logger.warning(f"    Li displacement too small, skipping")
+            if ion_dist < ion_displacement_min:
+                logger.warning(f"    Ion displacement too small, skipping")
                 results.append({
                     'path': path_name,
-                    'li_displacement_A': round(li_dist, 3),
+                    'ion_displacement_A': round(ion_dist, 3),
                     'barrier_eV': None,
-                    'status': f'displacement too small ({li_dist:.2f}Å)'
+                    'status': f'displacement too small ({ion_dist:.2f}Å)'
                 })
                 continue
 
@@ -278,7 +293,7 @@ class DiffusionStep(BaseStep):
 
             # Run NEB
             try:
-                from ase.neb import SingleCalculatorNEB
+                from ase.mep import SingleCalculatorNEB
                 from ase.optimize import BFGS
 
                 neb = SingleCalculatorNEB(images, climb=neb_climb, method='improvedtangent')
@@ -294,7 +309,7 @@ class DiffusionStep(BaseStep):
                 logger.info(f"    Barrier = {barrier:.4f} eV")
 
                 # Save NEB path structures
-                path_dir = material_dir / f"neb_{path_name}"
+                path_dir = step_dir / f"neb_{path_name}"
                 path_dir.mkdir(exist_ok=True)
                 for i, img in enumerate(images):
                     img_pmg = adaptor.get_structure(img)
@@ -302,7 +317,7 @@ class DiffusionStep(BaseStep):
 
                 results.append({
                     'path': path_name,
-                    'li_displacement_A': round(li_dist, 3),
+                    'ion_displacement_A': round(ion_dist, 3),
                     'barrier_eV': round(barrier, 4),
                     'energies': [round(e, 4) for e in energies],
                     'status': 'success'
@@ -312,7 +327,7 @@ class DiffusionStep(BaseStep):
                 logger.error(f"    NEB failed: {e}")
                 results.append({
                     'path': path_name,
-                    'li_displacement_A': round(li_dist, 3),
+                    'ion_displacement_A': round(ion_dist, 3),
                     'barrier_eV': None,
                     'status': f'NEB failed: {e}'
                 })

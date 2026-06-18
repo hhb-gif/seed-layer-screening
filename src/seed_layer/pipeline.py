@@ -90,6 +90,7 @@ class SeedLayerPipeline:
                     "relaxation": self.config.relaxation,
                     "adsorption": self.config.adsorption,
                     "diffusion": self.config.diffusion,
+                    "interface": self.config.interface,
                     "scoring": self.config.scoring,
                     "output": self.config.output,
                 },
@@ -119,7 +120,7 @@ class SeedLayerPipeline:
         # Step 2: Stability screening
         logger.info("Step 2: Electrochemical stability screening...")
         stability_step = StabilityStep(self.config, self.calculator, self.run_dir)
-        stable_materials = stability_step.run(materials)
+        stable_materials, stability_results = stability_step.run(materials)
         logger.info(f"{len(stable_materials)} materials passed stability screening")
 
         # Step 3: Lattice matching
@@ -161,7 +162,7 @@ class SeedLayerPipeline:
 
         # Generate summary
         logger.info("Generating summary report...")
-        self._generate_summary(stable_materials, matched_materials, adsorption_results, diffusion_results, interface_results)
+        self._generate_summary(stable_materials, matched_materials, adsorption_results, diffusion_results, interface_results, stability_results)
 
         logger.info("Pipeline complete!")
 
@@ -253,6 +254,7 @@ class SeedLayerPipeline:
         adsorption: dict,
         diffusion: dict,
         interface: dict = None,
+        stability: dict = None,
     ):
         """Generate summary CSV.
 
@@ -262,6 +264,7 @@ class SeedLayerPipeline:
             adsorption: Adsorption results by material ID
             diffusion: Diffusion results by material ID
             interface: Interface energy results by material ID
+            stability: Stability results by material ID (with e_above_hull)
         """
         from .reporting import generate_summary_csv
 
@@ -274,6 +277,7 @@ class SeedLayerPipeline:
             adsorption_results=adsorption,
             diffusion_results=diffusion,
             interface_results=interface,
+            stability_results=stability,
             max_mismatch=max_mismatch,
         )
         logger.info(f"Summary: {len(df)} materials in final report")

@@ -53,9 +53,11 @@ class InterfaceStep(BaseStep):
                 )
                 if result:
                     item["interface_energy"] = result
-                    logger.info(
-                        f"  {material_id}: γ = {result['interface_energy_eV_per_A2']:.4f} eV/Å²"
-                    )
+                    gamma = result.get("interface_energy_eV_per_A2")
+                    if gamma is not None:
+                        logger.info(f"  {material_id}: γ = {gamma:.4f} eV/Å²")
+                    else:
+                        logger.warning(f"  {material_id}: interface energy could not be computed")
             except Exception as e:
                 logger.warning(f"Interface energy failed for {material_id}: {e}")
                 item["interface_energy"] = None
@@ -69,7 +71,7 @@ class InterfaceStep(BaseStep):
     ) -> Dict[str, Any]:
         """Calculate interface energy for one material."""
         from pymatgen.io.ase import AseAtomsAdaptor
-        from src.seed_layer.io import save_structure_cif
+        from ..io import save_structure_cif
 
         adaptor = AseAtomsAdaptor()
         material_id = item["material_id"]
@@ -87,7 +89,7 @@ class InterfaceStep(BaseStep):
         ref_scale_a = item.get("ref_scale_a", 1)
         ref_scale_b = item.get("ref_scale_b", 1)
 
-        # Build reference metal structure
+        # Build reference metal structure (not the seed's relaxed_bulk!)
         ref_struct = self.build_ref_structure()
         ref_bulk = self.calculator.relax(
             ref_struct, fmax=fmax, steps=steps, relax_cell=True
@@ -134,10 +136,8 @@ class InterfaceStep(BaseStep):
 
         logger.info(f"Metal slab has {len(z_layers)} layers, computing up to {actual_max}")
 
-        # Calculate area from seed slab lattice
+        # Calculate area from seed slab lattice (2D cross product magnitude)
         seed_cell = adaptor.get_atoms(seed_slab).get_cell()
-        area = abs(np.cross(seed_cell[0], seed_cell[1])[2])
-        # For 2D slabs, area = |a x b| (z-component)
         area = np.linalg.norm(np.cross(seed_cell[0][:2], seed_cell[1][:2]))
 
         # Layer-by-layer calculation

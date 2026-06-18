@@ -16,6 +16,7 @@ def generate_summary_csv(
     adsorption_results: Dict[str, Any],
     diffusion_results: Dict[str, Any],
     interface_results: Dict[str, Any] = None,
+    stability_results: Dict[str, Any] = None,
     max_mismatch: float = 8.0,
     w_lattice: float = 0.15,
     w_adsorption: float = 0.25,
@@ -32,6 +33,7 @@ def generate_summary_csv(
         adsorption_results: Adsorption results by material ID
         diffusion_results: Diffusion results by material ID
         interface_results: Interface energy results by material ID
+        stability_results: Stability results by material ID (with e_above_hull)
         max_mismatch: Maximum lattice mismatch threshold (%)
         w_lattice: Weight for lattice mismatch score
         w_adsorption: Weight for adsorption energy score
@@ -107,6 +109,7 @@ def generate_summary_csv(
             w_lattice=w_lattice, w_adsorption=w_adsorption,
             w_diffusion=w_diffusion, w_stability=w_stability,
             w_interface=w_interface,
+            stability_results=stability_results,
         )
 
     # Save to CSV
@@ -125,6 +128,7 @@ def _calculate_scores(
     w_diffusion: float = 0.25,
     w_stability: float = 0.10,
     w_interface: float = 0.25,
+    stability_results: Dict[str, Any] = None,
 ) -> pd.DataFrame:
     """Calculate composite scores based on screening results.
 
@@ -157,6 +161,7 @@ def _calculate_scores(
     df['S_lattice'] = np.nan
     df['S_adsorption'] = np.nan
     df['S_diffusion'] = np.nan
+    df['S_stability'] = np.nan
     df['S_interface'] = np.nan
     df['score'] = 0.0
     df['score_mode'] = 'unknown'
@@ -195,6 +200,16 @@ def _calculate_scores(
                 -df.loc[valid_iface, 'interface_energy_eV_per_A2'] / 0.05
             ).clip(0, 1)
 
+    # Calculate stability score from e_above_hull
+    # S = exp(-e_above_hull / 0.05): e_above_hull=0 → S=1.0, 0.05 → S≈0.37
+    if stability_results:
+        for idx in df.index:
+            mp_id = df.loc[idx, 'material_id']
+            if mp_id in stability_results:
+                eah = stability_results[mp_id].get('e_above_hull')
+                if eah is not None:
+                    df.loc[idx, 'S_stability'] = np.exp(-eah / 0.05)
+
     # Calculate composite score
     for idx in df.index:
         terms = []
@@ -219,6 +234,11 @@ def _calculate_scores(
         if pd.notna(df.loc[idx, 'S_interface']):
             terms.append((w_interface, df.loc[idx, 'S_interface']))
             mode_parts.append('iface')
+
+        # Stability score
+        if pd.notna(df.loc[idx, 'S_stability']):
+            terms.append((w_stability, df.loc[idx, 'S_stability']))
+            mode_parts.append('stab')
 
         # Calculate weighted average
         if terms:

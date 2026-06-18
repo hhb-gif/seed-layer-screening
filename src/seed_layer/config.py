@@ -14,6 +14,9 @@ class PipelineConfig:
     """Pipeline configuration loaded from YAML."""
 
     api: Dict[str, Any] = field(default_factory=dict)
+    working_ion: str = "Li"
+    ref_structure_id: str = None
+    ref_miller: tuple = (1, 1, 0)
     screening: Dict[str, Any] = field(default_factory=dict)
     lattice: Dict[str, Any] = field(default_factory=dict)
     surface: Dict[str, Any] = field(default_factory=dict)
@@ -21,6 +24,13 @@ class PipelineConfig:
     relaxation: Dict[str, Any] = field(default_factory=dict)
     adsorption: Dict[str, Any] = field(default_factory=dict)
     diffusion: Dict[str, Any] = field(default_factory=dict)
+    interface: Dict[str, Any] = field(default_factory=lambda: {
+        "max_metal_layers": 5,
+        "slab_thickness": 5.0,
+        "vacuum": 15.0,
+        "fmax": 0.05,
+        "steps": 500,
+    })
     scoring: Dict[str, Any] = field(default_factory=dict)
     output: Dict[str, Any] = field(default_factory=dict)
 
@@ -68,8 +78,13 @@ def load_config(config_path: str) -> PipelineConfig:
     # Substitute environment variables
     config = _substitute_env_vars(raw_config)
 
+    ref_miller = tuple(config.get("ref_miller", [1, 1, 0]))
+
     return PipelineConfig(
         api=config.get("api", {}),
+        working_ion=config.get("working_ion", "Li"),
+        ref_structure_id=config.get("ref_structure_id", None),
+        ref_miller=ref_miller,
         screening=config.get("screening", {}),
         lattice=config.get("lattice", {}),
         surface=config.get("surface", {}),
@@ -77,6 +92,13 @@ def load_config(config_path: str) -> PipelineConfig:
         relaxation=config.get("relaxation", {}),
         adsorption=config.get("adsorption", {}),
         diffusion=config.get("diffusion", {}),
+        interface=config.get("interface", {
+            "max_metal_layers": 5,
+            "slab_thickness": 5.0,
+            "vacuum": 15.0,
+            "fmax": 0.05,
+            "steps": 500,
+        }),
         scoring=config.get("scoring", {}),
         output=config.get("output", {}),
     )
