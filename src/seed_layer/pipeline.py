@@ -151,9 +151,17 @@ class SeedLayerPipeline:
             logger.info("Step 5: Skipping NEB calculation")
             diffusion_results = {}
 
+        # Collect interface results
+        interface_results = {}
+        for mat in matched_materials:
+            mp_id = mat["material_id"]
+            iface = mat.get("interface_energy")
+            if iface:
+                interface_results[mp_id] = iface
+
         # Generate summary
         logger.info("Generating summary report...")
-        self._generate_summary(stable_materials, matched_materials, adsorption_results, diffusion_results)
+        self._generate_summary(stable_materials, matched_materials, adsorption_results, diffusion_results, interface_results)
 
         logger.info("Pipeline complete!")
 
@@ -244,6 +252,7 @@ class SeedLayerPipeline:
         matched: List[dict],
         adsorption: dict,
         diffusion: dict,
+        interface: dict = None,
     ):
         """Generate summary CSV.
 
@@ -252,6 +261,7 @@ class SeedLayerPipeline:
             matched: List of matched material dicts (from LatticeStep)
             adsorption: Adsorption results by material ID
             diffusion: Diffusion results by material ID
+            interface: Interface energy results by material ID
         """
         from .reporting import generate_summary_csv
 
@@ -263,6 +273,7 @@ class SeedLayerPipeline:
             matched_materials=matched,
             adsorption_results=adsorption,
             diffusion_results=diffusion,
+            interface_results=interface,
             max_mismatch=max_mismatch,
         )
         logger.info(f"Summary: {len(df)} materials in final report")

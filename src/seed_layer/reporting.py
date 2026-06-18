@@ -15,7 +15,13 @@ def generate_summary_csv(
     matched_materials: List[Dict[str, Any]],
     adsorption_results: Dict[str, Any],
     diffusion_results: Dict[str, Any],
+    interface_results: Dict[str, Any] = None,
     max_mismatch: float = 8.0,
+    w_lattice: float = 0.15,
+    w_adsorption: float = 0.25,
+    w_diffusion: float = 0.25,
+    w_stability: float = 0.10,
+    w_interface: float = 0.25,
 ) -> pd.DataFrame:
     """Generate summary CSV from all step results.
 
@@ -25,7 +31,13 @@ def generate_summary_csv(
         matched_materials: Lattice matching results
         adsorption_results: Adsorption results by material ID
         diffusion_results: Diffusion results by material ID
+        interface_results: Interface energy results by material ID
         max_mismatch: Maximum lattice mismatch threshold (%)
+        w_lattice: Weight for lattice mismatch score
+        w_adsorption: Weight for adsorption energy score
+        w_diffusion: Weight for diffusion barrier score
+        w_stability: Weight for stability score
+        w_interface: Weight for interface energy score
 
     Returns:
         Summary DataFrame
@@ -78,13 +90,24 @@ def generate_summary_csv(
                         row["barrier_eV"] = best_path['barrier_eV']
                         row["diffusion_path"] = best_path['path']
 
+        # Add interface energy data if available
+        if interface_results and mp_id in interface_results:
+            iface_data = interface_results[mp_id]
+            if iface_data and iface_data.get("interface_energy_eV_per_A2") is not None:
+                row["interface_energy_eV_per_A2"] = iface_data["interface_energy_eV_per_A2"]
+
         rows.append(row)
 
     df = pd.DataFrame(rows)
 
     # Calculate scores
     if not df.empty:
-        df = _calculate_scores(df, max_mismatch=max_mismatch)
+        df = _calculate_scores(
+            df, max_mismatch=max_mismatch,
+            w_lattice=w_lattice, w_adsorption=w_adsorption,
+            w_diffusion=w_diffusion, w_stability=w_stability,
+            w_interface=w_interface,
+        )
 
     # Save to CSV
     csv_path = output_dir / "summary.csv"
@@ -97,9 +120,11 @@ def generate_summary_csv(
 def _calculate_scores(
     df: pd.DataFrame,
     max_mismatch: float = 8.0,
-    w_lattice: float = 0.4,
-    w_adsorption: float = 0.4,
-    w_diffusion: float = 0.2
+    w_lattice: float = 0.15,
+    w_adsorption: float = 0.25,
+    w_diffusion: float = 0.25,
+    w_stability: float = 0.10,
+    w_interface: float = 0.25,
 ) -> pd.DataFrame:
     """Calculate composite scores based on screening results.
 
@@ -107,6 +132,7 @@ def _calculate_scores(
     - S_adsorption = exp(-((E_ads + 0.5)^2) / 0.08)  # Optimal around -0.5 eV
     - S_lattice = max(0, 1.0 - mismatch / max_mismatch)  # Linear penalty
     - S_diffusion = max(0, 1.0 - barrier / 1.0)  # Linear penalty, 1 eV reference
+    - S_interface = exp(-gamma / 0.05)  # Lower interface energy is better
     - Final score = weighted average of available components
 
     Args:
@@ -115,6 +141,8 @@ def _calculate_scores(
         w_lattice: Weight for lattice mismatch score
         w_adsorption: Weight for adsorption energy score
         w_diffusion: Weight for diffusion barrier score
+        w_stability: Weight for stability score
+        w_interface: Weight for interface energy score
 
     Returns:
         DataFrame with score columns added
@@ -129,6 +157,7 @@ def _calculate_scores(
     df['S_lattice'] = np.nan
     df['S_adsorption'] = np.nan
     df['S_diffusion'] = np.nan
+    df['S_interface'] = np.nan
     df['score'] = 0.0
     df['score_mode'] = 'unknown'
 
@@ -156,6 +185,16 @@ def _calculate_scores(
                 1.0 - df.loc[valid_diff, 'barrier_eV'] / 1.0
             ).clip(lower=0)
 
+    # Calculate interface energy score
+    if 'interface_energy_eV_per_A2' in df.columns:
+        valid_iface = df['interface_energy_eV_per_A2'].notna()
+        if valid_iface.any():
+            # Lower interface energy is better
+            # Normalize: S = exp(-gamma / gamma_ref), gamma_ref = 0.05 eV/Å²
+            df.loc[valid_iface, 'S_interface'] = np.exp(
+                -df.loc[valid_iface, 'interface_energy_eV_per_A2'] / 0.05
+            ).clip(0, 1)
+
     # Calculate composite score
     for idx in df.index:
         terms = []
@@ -175,6 +214,11 @@ def _calculate_scores(
         if pd.notna(df.loc[idx, 'S_diffusion']):
             terms.append((w_diffusion, df.loc[idx, 'S_diffusion']))
             mode_parts.append('neb')
+
+        # Interface score
+        if pd.notna(df.loc[idx, 'S_interface']):
+            terms.append((w_interface, df.loc[idx, 'S_interface']))
+            mode_parts.append('iface')
 
         # Calculate weighted average
         if terms:
