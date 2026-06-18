@@ -80,6 +80,9 @@ class SeedLayerPipeline:
             yaml.dump(
                 {
                     "api": self.config.api,
+                    "working_ion": self.config.working_ion,
+                    "ref_structure_id": self.config.ref_structure_id,
+                    "ref_miller": list(self.config.ref_miller),
                     "screening": self.config.screening,
                     "lattice": self.config.lattice,
                     "surface": self.config.surface,
@@ -104,6 +107,7 @@ class SeedLayerPipeline:
         """
         from .steps.stability import StabilityStep
         from .steps.lattice import LatticeStep
+        from .steps.interface import InterfaceStep
         from .steps.adsorption import AdsorptionStep
         from .steps.diffusion import DiffusionStep
 
@@ -123,6 +127,13 @@ class SeedLayerPipeline:
         lattice_step = LatticeStep(self.config, self.calculator, self.run_dir)
         matched_materials = lattice_step.run(stable_materials)
         logger.info(f"{len(matched_materials)} materials passed lattice matching")
+
+        # Step 3.5: Interface energy
+        logger.info("=" * 50)
+        logger.info("Step 3.5: Interface Energy")
+        logger.info("=" * 50)
+        interface_step = InterfaceStep(self.config, self.calculator, self.run_dir)
+        matched_materials = interface_step.run(matched_materials)
 
         # Step 4: Adsorption energy
         logger.info("Step 4: Adsorption energy calculation...")
