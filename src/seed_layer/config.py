@@ -59,6 +59,72 @@ def _substitute_env_vars(value: Any) -> Any:
     return value
 
 
+def save_config(config: PipelineConfig, path: str) -> None:
+    """Save PipelineConfig to YAML file.
+
+    Serializes the config dataclass back to YAML. Sensitive fields in the
+    ``api`` section (API keys) are intentionally excluded; only ``calculator``
+    is preserved so that re-loading the file never leaks secrets.
+
+    Args:
+        config: PipelineConfig instance to serialize.
+        path: Destination file path (will be overwritten if it exists).
+    """
+    cfg_dict = _config_to_dict(config)
+
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(cfg_dict, f, sort_keys=False, allow_unicode=True, default_flow_style=False)
+
+
+def _config_to_dict(config: PipelineConfig) -> dict:
+    """Convert a PipelineConfig to a plain dict suitable for YAML serialization.
+
+    Args:
+        config: PipelineConfig instance.
+
+    Returns:
+        dict with all config fields. The ``api`` section is filtered to
+        remove any key that looks like a secret (contains "key" or "token").
+        ``ref_miller`` tuples are converted to lists.
+    """
+    result = {}
+    for fld_name in PipelineConfig.__dataclass_fields__:
+        value = getattr(config, fld_name)
+
+        # Filter sensitive keys out of the api section
+        if fld_name == "api":
+            value = _sanitize_api(value)
+
+        # Tuples are not YAML-friendly; convert to list
+        if isinstance(value, tuple):
+            value = list(value)
+
+        # Skip fields left at their default empty value to keep YAML clean
+        result[fld_name] = value
+
+    return result
+
+
+def _sanitize_api(api: dict) -> dict:
+    """Remove sensitive keys (API keys / tokens) from the api dict.
+
+    Keeps only non-secret entries so that saved YAML files can be safely
+    committed or shared.
+
+    Args:
+        api: Raw ``api`` section from PipelineConfig.
+
+    Returns:
+        Filtered dict without secret-looking keys.
+    """
+    sensitive_patterns = ("key", "token", "secret", "password")
+    return {
+        k: v
+        for k, v in api.items()
+        if not any(p in k.lower() for p in sensitive_patterns)
+    }
+
+
 def load_config(config_path: str) -> PipelineConfig:
     """Load configuration from YAML file with environment variable substitution.
 

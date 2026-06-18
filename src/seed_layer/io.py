@@ -5,7 +5,27 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
-from pymatgen.core import Structure
+from pymatgen.core import Structure, Element
+from pymatgen.entries import Entry
+
+
+def ensure_structure(obj) -> Structure:
+    """Ensure the object is a pymatgen Structure, converting from dict if needed.
+
+    Handles the case where MP API returns raw dicts instead of pymatgen objects
+    due to monty deserialization failures.
+
+    Args:
+        obj: pymatgen Structure or raw dict
+
+    Returns:
+        pymatgen Structure
+    """
+    if isinstance(obj, Structure):
+        return obj
+    if isinstance(obj, dict):
+        return Structure.from_dict(obj)
+    raise TypeError(f"Cannot convert {type(obj)} to Structure")
 
 
 def save_structure_cif(structure: Structure, path: Union[str, Path]) -> Path:
@@ -20,7 +40,7 @@ def save_structure_cif(structure: Structure, path: Union[str, Path]) -> Path:
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    structure.to(filename=str(path))
+    path.write_text(structure.to(fmt="cif"), encoding="utf-8")
     return path
 
 

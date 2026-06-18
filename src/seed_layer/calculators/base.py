@@ -63,3 +63,14 @@ class CalculatorBase(ABC):
             Forces array of shape (N, 3) in eV/Å
         """
         ...
+
+    def get_ase_calculator(self):
+        """Return the underlying ASE calculator object.
+
+        Used by steps that need direct ASE integration (e.g., NEB).
+        Subclasses should override if they wrap the calculator differently.
+
+        Returns:
+            An ASE-compatible calculator object
+        """
+        raise NotImplementedError("Subclass must implement get_ase_calculator()")

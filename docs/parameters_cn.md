@@ -76,14 +76,21 @@ surface:
 
 ```yaml
 calculator:
-  type: "chgnet"
-  kwargs: {}
+  type: "mace"
+  kwargs:
+    model: "medium-mpa-0"
+    device: "cuda"
+    default_dtype: "float64"
+    dispersion: false
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `type` | string | "chgnet" | 势函数类型。目前支持 "chgnet"，未来可扩展 "mace"、"m3gnet" 等。 |
-| `kwargs` | dict | {} | 传递给势函数构造器的额外参数。 |
+| `type` | string | "mace" | 势函数类型。支持 "mace"（推荐）和 "chgnet"。 |
+| `kwargs.model` | string | "medium-mpa-0" | MACE 模型名称。推荐 "medium-mpa-0"（F1=0.836）。可选 "medium"（旧版 MACE-MP-0）、"small"、"large"。 |
+| `kwargs.device` | string | "cuda" | 计算设备。"cuda" 使用 GPU，"cpu" 使用 CPU。 |
+| `kwargs.default_dtype` | string | "float64" | 浮点精度。"float64" 更准确，"float32" 更快但可能损失精度。 |
+| `kwargs.dispersion` | bool | false | 是否启用 D3 色散校正。对层状材料可能有用。 |
 
 ---
 

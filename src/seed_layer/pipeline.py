@@ -281,3 +281,24 @@ class SeedLayerPipeline:
             max_mismatch=max_mismatch,
         )
         logger.info(f"Summary: {len(df)} materials in final report")
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import argparse
+    from seed_layer.config import load_config
+
+    parser = argparse.ArgumentParser(description="Seed Layer Screening Pipeline")
+    parser.add_argument("--config", required=True, help="Path to config YAML")
+    parser.add_argument("--output-dir", default="output", help="Output directory (default: output)")
+    parser.add_argument("--tag", default=None, help="Optional run tag for output directory naming")
+    parser.add_argument("--skip-neb", action="store_true", help="Skip NEB diffusion calculation")
+    args = parser.parse_args()
+
+    config = load_config(args.config)
+    pipeline = SeedLayerPipeline(config, output_dir=Path(args.output_dir), tag=args.tag)
+    pipeline.run(skip_neb=args.skip_neb)
+    print(f"Pipeline complete. Results in: {pipeline.run_dir}")

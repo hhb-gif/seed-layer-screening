@@ -37,6 +37,9 @@ Step 5  CI-NEB 扩散   → 2×2 超胞，7 image，BFGS 优化扩散势垒
 seed-layer-screening/
 ├── README.md
 ├── pyproject.toml              ← 项目元数据 & 依赖
+├── app.py                      ← Streamlit Web UI
+├── .streamlit/
+│   └── config.toml             ← Streamlit 主题配置
 ├── configs/
 │   └── default.yaml            ← 默认运行配置
 ├── src/
@@ -145,6 +148,41 @@ python src/main.py --config configs/default.yaml --skip-neb
 - **YAML 配置驱动**：所有参数集中在配置文件中，支持 `${ENV_VAR}` 环境变量替换
 - **Pipeline 编排**：`SeedLayerPipeline` 按顺序执行各 Step，处理数据传递和断点逻辑
 - **多工作离子支持**：改 `working_ion` 配置即可切换 Li/Zn/Mg/Na 等，参考金属自动从 MP 拉取
+
+## Web UI
+
+项目提供 Streamlit 可视化控制台，支持配置编辑、一键运行、结果查看。
+
+```bash
+conda activate claude-code
+streamlit run app.py
+```
+
+浏览器自动打开 `http://localhost:8501`。
+
+### 功能
+
+| Tab | 功能 |
+|-----|------|
+| **总览** | 查看当前配置 JSON，下载 YAML |
+| **运行** | 后台启动 pipeline，实时日志输出，Start/Stop 控制 |
+| **结果** | 自动扫描最新 run，评分表格 + Plotly 交互图表 |
+
+### 侧边栏配置
+
+9 个配置分组，共 23 个控件，所有参数可视化可编辑：
+
+- 🎯 目标金属、📦 候选材料、🧮 计算参数、🧪 稳定性筛选
+- 📐 平板参数、🔀 扩散、🔗 界面能、⚖️ 评分权重、📤 输出
+
+修改后点"💾 保存"写回 YAML，再点"▶ 开始运行"即可。
+
+### 设计风格
+
+- Dark Mode 科技感（深蓝底 + 蓝色主调 + 琥珀高亮）
+- Fira Sans + Fira Code 字体
+- Plotly 交互图表（水平柱状图 + 雷达图）
+- 卡片式布局，圆角微光边框
 
 ## 测试
 

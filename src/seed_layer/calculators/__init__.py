@@ -23,6 +23,9 @@ def create_calculator(config: Dict[str, Any]) -> CalculatorBase:
     if calc_type == "chgnet":
         from .chgnet import CHGNetCalculator
         return CHGNetCalculator(**kwargs)
+    elif calc_type == "mace":
+        from .mace import MACECalculator
+        return MACECalculator(**kwargs)
     else:
         raise ValueError(f"Unknown calculator type: {calc_type}")
 
