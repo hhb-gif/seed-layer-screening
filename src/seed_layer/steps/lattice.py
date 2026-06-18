@@ -106,6 +106,7 @@ class LatticeStep(BaseStep):
 
         best_mismatch = float("inf")
         best_info = None
+        best_mismatch_info = None
         best_slab = None
 
         for slab in slabs:
@@ -115,6 +116,7 @@ class LatticeStep(BaseStep):
             if mismatch < best_mismatch:
                 best_mismatch = mismatch
                 best_slab = slab
+                best_mismatch_info = info
                 best_info = {
                     "material_id": mp_id,
                     "miller": miller,
@@ -128,10 +130,10 @@ class LatticeStep(BaseStep):
         if best_info:
             miller_dir = create_miller_dir(step_dir, best_info["miller"])
             # Add scaling factors for interface construction
-            best_info["film_scale_a"] = info.get("film_scale_a", 1)
-            best_info["film_scale_b"] = info.get("film_scale_b", 1)
-            best_info["ref_scale_a"] = info.get("ref_scale_a", 1)
-            best_info["ref_scale_b"] = info.get("ref_scale_b", 1)
+            best_info["film_scale_a"] = best_mismatch_info.get("film_scale_a", 1)
+            best_info["film_scale_b"] = best_mismatch_info.get("film_scale_b", 1)
+            best_info["ref_scale_a"] = best_mismatch_info.get("ref_scale_a", 1)
+            best_info["ref_scale_b"] = best_mismatch_info.get("ref_scale_b", 1)
             save_json(
                 {k: v for k, v in best_info.items() if k not in ("relaxed_bulk", "best_slab")},
                 miller_dir / "mismatch.json",
