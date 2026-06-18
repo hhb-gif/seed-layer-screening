@@ -8,6 +8,7 @@ __all__ = [
     "LatticeStep",
     "AdsorptionStep",
     "DiffusionStep",
+    "InterfaceStep",
 ]
 
 
@@ -29,4 +30,7 @@ def __getattr__(name: str):
     elif name == "DiffusionStep":
         from .diffusion import DiffusionStep
         return DiffusionStep
+    elif name == "InterfaceStep":
+        from .interface import InterfaceStep
+        return InterfaceStep
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
